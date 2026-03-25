@@ -1,4 +1,46 @@
-let lastSearchedId = '';
+// Keep this state on `window` so `utils.hideProfileInformation()` can also update it.
+window.lastSearchedId = window.lastSearchedId || '';
+
+const DEFAULT_PREVIEW_VANITY_URL = 'https://steamcommunity.com/id/afarnsworth';
+const DEFAULT_PREVIEW_PROCESSED_ID = 'afarnsworth';
+
+const DEFAULT_PREVIEW_RESTORE_DEBOUNCE_MS = 350;
+let defaultPreviewRestoreTimeout = null;
+let lookupNonce = 0;
+
+function parseProcessedId(steamId) {
+    // extract vanity id from full url if present
+    if (steamId.includes('steamcommunity.com/id/')) {
+        return steamId.split('steamcommunity.com/id/')[1].split('/')[0];
+    }
+    // support full profile URLs
+    if (steamId.includes('steamcommunity.com/profiles/')) {
+        return steamId.split('steamcommunity.com/profiles/')[1].split('/')[0];
+    }
+    return steamId;
+}
+
+function scheduleDefaultPreviewRestore() {
+    if (defaultPreviewRestoreTimeout) clearTimeout(defaultPreviewRestoreTimeout);
+    defaultPreviewRestoreTimeout = setTimeout(() => {
+        defaultPreviewRestoreTimeout = null;
+        loadDefaultPreview();
+    }, DEFAULT_PREVIEW_RESTORE_DEBOUNCE_MS);
+}
+
+function loadDefaultPreview() {
+    const steamIdInput = document.getElementById('steam_id');
+    const resultsElement = document.getElementById('results');
+    if (!steamIdInput || !resultsElement) return;
+
+    // Avoid re-fetching if default is already visible.
+    const isAlreadyShowingDefault =
+        window.lastSearchedId === DEFAULT_PREVIEW_PROCESSED_ID &&
+        !resultsElement.classList.contains('hidden');
+    if (isAlreadyShowingDefault) return;
+
+    lookupProfile(DEFAULT_PREVIEW_VANITY_URL);
+}
 
 document.addEventListener('DOMContentLoaded', function () {
     const steamIdInput = document.getElementById('steam_id');
@@ -10,6 +52,7 @@ document.addEventListener('DOMContentLoaded', function () {
     window.authManager.init().then(function () {
         loadingScreen.style.display = 'none';
         body.classList.add('loaded');
+        loadDefaultPreview();
     });
 
     window.settingsManager.init();
@@ -21,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function () {
     steamIdInput.addEventListener('input', e => {
         const val = e.target.value.trim(),
             hasVal = val.length > 0,
-            isNew = val !== lastSearchedId;
+            isNew = val !== window.lastSearchedId;
         clearSearchBtn.classList.toggle('hidden', !hasVal);
         const enable = hasVal && isNew;
         lookupBtn.disabled = !enable;
@@ -30,6 +73,10 @@ document.addEventListener('DOMContentLoaded', function () {
         // hide profile information if search is empty
         if (!hasVal) {
             window.utils.hideProfileInformation();
+            scheduleDefaultPreviewRestore();
+        } else if (defaultPreviewRestoreTimeout) {
+            clearTimeout(defaultPreviewRestoreTimeout);
+            defaultPreviewRestoreTimeout = null;
         }
     });
 
@@ -51,21 +98,19 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 
 // main profile analysis function
-async function lookupProfile() {
-    const steamId = document.getElementById('steam_id').value.trim();
+async function lookupProfile(steamIdOverride) {
+    const steamIdInput = document.getElementById('steam_id');
+    const steamId = (steamIdOverride ?? steamIdInput?.value ?? '').trim();
     if (!steamId) {
         window.utils.showError('enter a valid format');
         return;
     }
 
-    // extract vanity id from full url if present
-    let processedId = steamId;
-    if (steamId.includes('steamcommunity.com/id/')) {
-        processedId = steamId.split('steamcommunity.com/id/')[1].split('/')[0];
-    }
+    const processedId = parseProcessedId(steamId);
+    const lookupId = ++lookupNonce;
 
     // update last searched id
-    lastSearchedId = processedId;
+    window.lastSearchedId = processedId;
 
     // disable ui elements during loading
     disableUIForLoading();
@@ -78,6 +123,7 @@ async function lookupProfile() {
         // check cache first
         const cachedProfile = window.profileCache.getProfile(processedId);
         if (cachedProfile) {
+            if (lookupId !== lookupNonce) return;
             // display cached data
             window.groupsManager.setGroupsData(cachedProfile.groups);
             window.profileManager.displayProfileInformation(cachedProfile);
@@ -90,8 +136,6 @@ async function lookupProfile() {
             }
 
             window.utils.setupFadeIn();
-            window.loadingManager.hideLoading();
-            enableUIAfterLoading();
             return;
         }
 
@@ -141,8 +185,11 @@ async function lookupProfile() {
         window.utils.setupFadeIn();
 
     } catch (error) {
-        window.utils.showError(error.message);
+        if (lookupId === lookupNonce) {
+            window.utils.showError(error.message);
+        }
     } finally {
+        if (lookupId !== lookupNonce) return;
         window.loadingManager.hideLoading();
         enableUIAfterLoading();
     }
@@ -175,10 +222,10 @@ function enableUIAfterLoading() {
 
     // update analyze button state based on input
     const currentInput = document.getElementById('steam_id').value.trim();
-    if (currentInput === lastSearchedId) {
-        lookupBtn.disabled = true;
-        lookupBtn.classList.add('cursor-not-allowed');
-    }
+    const hasInput = currentInput.length > 0;
+    const shouldDisable = !hasInput || currentInput === window.lastSearchedId;
+    lookupBtn.disabled = shouldDisable;
+    lookupBtn.classList.toggle('cursor-not-allowed', shouldDisable);
 }
 
 // global functions for html onclick handlers
@@ -200,6 +247,7 @@ function closeImageModal() {
 
 function clearSearch() {
     window.utils.clearSearch();
+    loadDefaultPreview();
 }
 
 function copySteamId(element) {
