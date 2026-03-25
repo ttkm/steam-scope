@@ -229,67 +229,39 @@ export function parseGroupsPage(html) {
 
 export async function fetchGroupDetails(groupLink) {
   try {
+    // XML endpoint has avatarFull, memberCount, and groupName in clean tags.
+    // This avoids fragile HTML scraping and reduces subrequest failures.
     const xmlUrl = `https://steamcommunity.com/groups/${groupLink}/memberslistxml/?xml=1`;
-    const htmlUrl = `https://steamcommunity.com/groups/${groupLink}`;
-    const [xmlText, htmlText] = await Promise.all([fetchSteamPage(xmlUrl), fetchSteamPage(htmlUrl)]);
+    const xmlText = await fetchSteamPage(xmlUrl);
+    if (!xmlText) return null;
 
     let name = groupLink;
     let members = null;
-    let founded = null;
     let avatar = null;
 
-    if (xmlText) {
-      const xmlNameMatch = xmlText.match(/<groupName><!\[CDATA\[([\s\S]*?)\]\]><\/groupName>/) ||
-                           xmlText.match(/<groupName>([^<]+)<\/groupName>/);
-      if (xmlNameMatch) {
-        const parsed = xmlNameMatch[1].trim();
-        if (parsed && parsed !== 'Group') name = parsed;
-      }
-      const memberCountMatch = xmlText.match(/<memberCount>(\d+)<\/memberCount>/);
-      if (memberCountMatch) members = parseInt(memberCountMatch[1], 10);
+    const nameMatch =
+      xmlText.match(/<groupName><!\[CDATA\[([\s\S]*?)\]\]><\/groupName>/) ||
+      xmlText.match(/<groupName>([^<]+)<\/groupName>/);
+    if (nameMatch) {
+      const parsed = nameMatch[1].trim();
+      if (parsed && parsed !== 'Group') name = parsed;
     }
 
-    if (htmlText) {
-      const ogMatch = htmlText.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
-      if (ogMatch) avatar = ogMatch[1];
-      else {
-        const imgMatch = htmlText.match(/class=["']groupAvatar[^"']*["'][^>]*src=["']([^"']+)["']/i);
-        if (imgMatch) avatar = imgMatch[1];
-      }
+    const memberMatch = xmlText.match(/<memberCount>(\d+)<\/memberCount>/);
+    if (memberMatch) members = parseInt(memberMatch[1], 10);
 
-      const foundedLabelMatch = htmlText.match(/class="label"[^>]*>\s*Founded\s*<\/div>\s*<div[^>]*class="data"[^>]*>\s*([^<]+?)\s*<\/div>/i);
-      if (foundedLabelMatch) founded = foundedLabelMatch[1].trim();
-      else {
-        const foundedTextMatch =
-          htmlText.match(/Founded[^<]{0,80}([A-Za-z]+\s+\d{1,2},?\s*\d{4})/i) ||
-          htmlText.match(/Founded[^<]{0,80}(\d{1,2}\s+[A-Za-z]+\s*,?\s*\d{4})/i);
-        if (foundedTextMatch) founded = foundedTextMatch[1].trim();
-      }
+    const avatarMatch =
+      xmlText.match(/<avatarFull>([^<]+)<\/avatarFull>/) ||
+      xmlText.match(/<avatarMedium>([^<]+)<\/avatarMedium>/);
+    if (avatarMatch) avatar = avatarMatch[1].trim();
 
-      if (name === groupLink) {
-        const htmlNameMatch =
-          htmlText.match(/<span class="profile_group_name"[^>]*>([^<]+)<\/span>/) ||
-          htmlText.match(/<h1 class="grouppage_header_name"[^>]*>([^<]+)<\/h1>/) ||
-          htmlText.match(/<title>Steam Community :: Group :: ([^<]+)<\/title>/);
-        if (htmlNameMatch) {
-          const parsed = htmlNameMatch[1]
-            .replace(/Steam Community :: Group :: /g, '')
-            .replace(/^[\s-]+|[\s-]+$/g, '')
-            .trim();
-          if (parsed && parsed !== 'Group') name = parsed;
-        }
-      }
-
-      if (members == null) {
-        const memberMatch =
-          htmlText.match(/class="groupMemberStat[^"]*"[^>]*>[^<]*([\d,]+)\s*Members/i) ||
-          htmlText.match(/groupMemberStat[^>]*>[^<]*([\d,]+)\s*Members/i) ||
-          htmlText.match(/([\d,]+)\s*Members/i);
-        if (memberMatch) members = parseInt(memberMatch[1].replace(/,/g, ''), 10);
-      }
-    }
-
-    return { name: name || groupLink, members: isNaN(members) ? null : members, founded, avatar };
+    return {
+      name: name || groupLink,
+      members: isNaN(members) ? null : members,
+      // founding_year comes from your DB (2007-2015 range).
+      founded: null,
+      avatar
+    };
   } catch {
     return null;
   }

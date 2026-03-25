@@ -159,24 +159,37 @@ export async function handleSearch(request, env, user) {
     }
 
     let filteredResults = await searchGroupsD1(getDb(env), criteria);
-    const maxEnrich = 30;
-    const toEnrich = filteredResults.slice(0, maxEnrich);
-    if (toEnrich.length > 0) {
-      const detailResults = await Promise.all(toEnrich.map(g => fetchGroupDetails(g.url).catch(() => null)));
+    if (filteredResults.length > 0) {
+      // Free plan: Workers subrequest cap can interrupt Promise.all once you exceed it.
+      // Fetch in small batches for reliability.
+      const BATCH_SIZE = 10;
+      const FREE_TIER_CAP = 49; // stay below 50 subrequests for a safer margin
+      const toEnrich = filteredResults.slice(0, FREE_TIER_CAP);
+
+      const detailResults = new Array(filteredResults.length).fill(null);
+      for (let i = 0; i < toEnrich.length; i += BATCH_SIZE) {
+        const batch = toEnrich.slice(i, i + BATCH_SIZE);
+        const batchDetails = await Promise.all(
+          batch.map(g => fetchGroupDetails(g.url).catch(() => null))
+        );
+        batchDetails.forEach((d, j) => { detailResults[i + j] = d; });
+
+        // small delay between batches reduces Steam throttling / burst failures
+        if (i + BATCH_SIZE < toEnrich.length) {
+          await new Promise(r => setTimeout(r, 80));
+        }
+      }
+
       filteredResults = filteredResults.map((g, idx) => {
-        const details = idx < detailResults.length ? detailResults[idx] : null;
+        const details = detailResults[idx];
         if (!details) return g;
+
         const enriched = { ...g };
         if (details.name) enriched.name = details.name;
         if (details.members != null && !Number.isNaN(details.members)) enriched.member_count = details.members;
         if (details.avatar) enriched.avatar = details.avatar;
-        if (details.founded && enriched.founding_year == null) {
-          const yearMatch = String(details.founded).match(/(20\d{2}|19\d{2})/);
-          if (yearMatch) {
-            const yearVal = parseInt(yearMatch[1], 10);
-            if (!Number.isNaN(yearVal)) enriched.founding_year = yearVal;
-          }
-        }
+
+        // keep DB founding_year; fetchGroupDetails returns founded:null when using XML-only
         return enriched;
       });
     }
