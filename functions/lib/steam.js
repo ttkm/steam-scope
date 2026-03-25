@@ -229,39 +229,55 @@ export function parseGroupsPage(html) {
 
 export async function fetchGroupDetails(groupLink) {
   try {
-    // XML endpoint has avatarFull, memberCount, and groupName in clean tags.
-    // This avoids fragile HTML scraping and reduces subrequest failures.
-    const xmlUrl = `https://steamcommunity.com/groups/${groupLink}/memberslistxml/?xml=1`;
-    const xmlText = await fetchSteamPage(xmlUrl);
-    if (!xmlText) return null;
+    const htmlUrl = `https://steamcommunity.com/groups/${groupLink}`;
+    const htmlText = await fetchSteamPage(htmlUrl);
+    if (!htmlText) return null;
 
     let name = groupLink;
     let members = null;
+    let founded = null;
     let avatar = null;
 
-    const nameMatch =
-      xmlText.match(/<groupName><!\[CDATA\[([\s\S]*?)\]\]><\/groupName>/) ||
-      xmlText.match(/<groupName>([^<]+)<\/groupName>/);
-    if (nameMatch) {
-      const parsed = nameMatch[1].trim();
+    // og:image is the most reliable group avatar source on the HTML page
+    const ogMatch = htmlText.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i);
+    if (ogMatch) avatar = ogMatch[1];
+    else {
+      const imgMatch = htmlText.match(/class=["']groupAvatar[^"']*["'][^>]*src=["']([^"']+)["']/i);
+      if (imgMatch) avatar = imgMatch[1];
+    }
+
+    // Member count: the number lives inside a nested <span>, so strip tags from the stat block first
+    const statBlock = htmlText.match(/class="groupMemberStat[^"]*"[^>]*>([\s\S]{0,300}?Members)/i);
+    if (statBlock) {
+      const text = statBlock[1].replace(/<[^>]+>/g, ' ');
+      const numMatch = text.match(/([\d,]+)\s*Members/i);
+      if (numMatch) members = parseInt(numMatch[1].replace(/,/g, ''), 10);
+    }
+
+    // Founded date (used to fill in founding_year when DB column is null)
+    const foundedLabelMatch = htmlText.match(/class="label"[^>]*>\s*Founded\s*<\/div>\s*<div[^>]*class="data"[^>]*>\s*([^<]+?)\s*<\/div>/i);
+    if (foundedLabelMatch) founded = foundedLabelMatch[1].trim();
+    else {
+      const foundedTextMatch =
+        htmlText.match(/Founded[^<]{0,80}([A-Za-z]+\s+\d{1,2},?\s*\d{4})/i) ||
+        htmlText.match(/Founded[^<]{0,80}(\d{1,2}\s+[A-Za-z]+\s*,?\s*\d{4})/i);
+      if (foundedTextMatch) founded = foundedTextMatch[1].trim();
+    }
+
+    // Group name
+    const htmlNameMatch =
+      htmlText.match(/<span class="profile_group_name"[^>]*>([^<]+)<\/span>/) ||
+      htmlText.match(/<h1 class="grouppage_header_name"[^>]*>([^<]+)<\/h1>/) ||
+      htmlText.match(/<title>Steam Community :: Group :: ([^<]+)<\/title>/);
+    if (htmlNameMatch) {
+      const parsed = htmlNameMatch[1]
+        .replace(/Steam Community :: Group :: /g, '')
+        .replace(/^[\s-]+|[\s-]+$/g, '')
+        .trim();
       if (parsed && parsed !== 'Group') name = parsed;
     }
 
-    const memberMatch = xmlText.match(/<memberCount>(\d+)<\/memberCount>/);
-    if (memberMatch) members = parseInt(memberMatch[1], 10);
-
-    const avatarMatch =
-      xmlText.match(/<avatarFull>([^<]+)<\/avatarFull>/) ||
-      xmlText.match(/<avatarMedium>([^<]+)<\/avatarMedium>/);
-    if (avatarMatch) avatar = avatarMatch[1].trim();
-
-    return {
-      name: name || groupLink,
-      members: isNaN(members) ? null : members,
-      // founding_year comes from your DB (2007-2015 range).
-      founded: null,
-      avatar
-    };
+    return { name: name || groupLink, members: isNaN(members) ? null : members, founded, avatar };
   } catch {
     return null;
   }
