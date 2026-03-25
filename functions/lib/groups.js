@@ -159,12 +159,10 @@ export async function handleSearch(request, env, user) {
     }
 
     let filteredResults = await searchGroupsD1(getDb(env), criteria);
-    const maxEnrich = 30;
-    const toEnrich = filteredResults.slice(0, maxEnrich);
-    if (toEnrich.length > 0) {
-      const detailResults = await Promise.all(toEnrich.map(g => fetchGroupDetails(g.url).catch(() => null)));
+    if (filteredResults.length > 0) {
+      const detailResults = await Promise.all(filteredResults.map(g => fetchGroupDetails(g.url).catch(() => null)));
       filteredResults = filteredResults.map((g, idx) => {
-        const details = idx < detailResults.length ? detailResults[idx] : null;
+        const details = detailResults[idx] ?? null;
         if (!details) return g;
         const enriched = { ...g };
         if (details.name) enriched.name = details.name;
