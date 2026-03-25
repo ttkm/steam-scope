@@ -1,10 +1,13 @@
 /*
  * groups layout
- * groups container
- * group cards
+ * groups container  — base (profile page, inner scroll box)
+ * groups container  — .groups-search-scroll (groups search page, page scroll)
+ * group cards       — base visible state; profile page opts in to scroll-reveal
  * search format instructions
  * match badges
  */
+
+/* ─── Container: profile page ─────────────────────────────────────────────── */
 
 #groups_container {
   max-height: calc(100vh - 400px);
@@ -16,46 +19,32 @@
   border: 1px solid var(--border-color);
   border-radius: 1rem;
   box-shadow: var(--shadow-md);
-  scroll-behavior: smooth;
-  scroll-padding-top: 1rem;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  transition: scroll-behavior 0.1s ease-out;
-  scroll-snap-type: block;
-  will-change: scroll-position, transform;
-  contain: layout style paint;
-  transform: translateZ(0);
-  backface-visibility: hidden;
-  perspective: 1000px;
 }
 
-#groups_container.scrolling {
-  filter: blur(0.5px);
-  transition: filter 0.15s ease-out;
-}
-
-#groups_container:not(.scrolling) {
-  filter: blur(0);
-  transition: filter 0.2s ease-out;
-}
-
-#groups_container .group-card {
+#groups_container:not(.groups-search-scroll) .group-card {
   margin-bottom: 0;
   padding: 0.75rem 0;
   scroll-snap-align: start;
-  scroll-snap-stop: normal;
   content-visibility: auto;
   contain-intrinsic-size: 0 140px;
 }
 
-#groups_container .group-card:first-child {
-  padding-top: 0.5rem;
+/* ─── Container: groups search page (page scrolls, no inner scroll box) ───── */
+
+#groups_container.groups-search-scroll {
+  max-height: none;
+  overflow: visible;
+  padding: 0;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
 }
 
-#groups_container .group-card:last-child {
-  padding-bottom: 0.5rem;
-  border-bottom: none;
-}
+/* ─── Group cards: base state (always visible) ─────────────────────────────
+   The profile page uses groups.js + IntersectionObserver which adds
+   .scroll-reveal to animate cards in. Until that class is added the card
+   must still be fully visible so nothing is ever blank.                    */
 
 .group-card {
   position: relative;
@@ -64,28 +53,6 @@
   border: none;
   border-bottom: 1px solid var(--border-color);
   height: 100%;
-  opacity: 0;
-  transform: translateY(12px) scale(0.99);
-  animation: none;
-  will-change: transform, opacity;
-  backface-visibility: hidden;
-  perspective: 1000px;
-  transform-style: preserve-3d;
-  transition: all 0.2s ease-out;
-}
-
-.group-card.scroll-reveal:hover {
-  transform: translateY(-3px) scale(1.2);
-  transition: all 0.25s ease-in;
-}
-
-.group-card.scroll-reveal:hover > div {
-  transform: translateY(-2px);
-  transition: transform 0.3s ease-in;
-}
-
-.group-card.scroll-reveal {
-  animation: scrollReveal 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
   opacity: 1;
 }
 
@@ -96,31 +63,68 @@
   align-items: center;
   gap: 1rem;
   padding: 0.75rem;
-  transition: transform 0.3s ease-out;
 }
+
+/* ─── Scroll-reveal animation (profile page only, added by groups.js) ─────── */
+
+.group-card.scroll-reveal {
+  animation: scrollReveal 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.group-card.scroll-reveal:hover {
+  transform: translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+@keyframes scrollReveal {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ─── nth-child stagger (profile page, 12 cards max shown at once) ─────────── */
+
+.group-card:nth-child(1)  { animation-delay: 0.01s; }
+.group-card:nth-child(2)  { animation-delay: 0.02s; }
+.group-card:nth-child(3)  { animation-delay: 0.035s; }
+.group-card:nth-child(4)  { animation-delay: 0.05s; }
+.group-card:nth-child(5)  { animation-delay: 0.065s; }
+.group-card:nth-child(6)  { animation-delay: 0.08s; }
+.group-card:nth-child(7)  { animation-delay: 0.095s; }
+.group-card:nth-child(8)  { animation-delay: 0.11s; }
+.group-card:nth-child(9)  { animation-delay: 0.125s; }
+.group-card:nth-child(10) { animation-delay: 0.14s; }
+.group-card:nth-child(11) { animation-delay: 0.155s; }
+.group-card:nth-child(12) { animation-delay: 0.17s; }
+
+/* Search page: cancel stagger (cards can be 100+) */
+#groups_container.groups-search-scroll .group-card {
+  animation: none;
+  animation-delay: 0s;
+}
+
+/* ─── Avatar ────────────────────────────────────────────────────────────────── */
 
 .group-card .avatar-container {
   position: relative;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: var(--shadow-sm);
-  cursor: grab;
   background-color: var(--bg-tertiary);
   width: 4rem;
   height: 4rem;
   flex-shrink: 0;
   border-radius: 0.5rem;
   overflow: hidden;
+  cursor: pointer;
 }
 
 .group-card .avatar-container img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.2s ease-in-out;
-}
-
-.group-card .avatar-container:hover img {
-  transform: scale(1.05);
 }
 
 .group-card .avatar-container::before {
@@ -129,7 +133,7 @@
   inset: 0;
   background: rgba(0, 0, 0, 0.2);
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.15s ease;
   z-index: 1;
 }
 
@@ -141,21 +145,21 @@
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%) scale(0.8);
+  transform: translate(-50%, -50%);
   color: white;
   opacity: 0;
   z-index: 2;
-  transition: all 0.2s ease;
+  transition: opacity 0.15s ease;
   pointer-events: none;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
   width: 1.5rem;
   height: 1.5rem;
 }
 
 .group-card .avatar-container:hover .view-icon {
   opacity: 1;
-  transform: translate(-50%, -50%) scale(1);
 }
+
+/* ─── Card text layout ──────────────────────────────────────────────────────── */
 
 .group-card .group-header {
   display: flex;
@@ -215,8 +219,6 @@
   letter-spacing: 0.025em;
   padding: 0.25rem 0.5rem;
   border-radius: 9999px;
-  transition: var(--transition-base);
-  box-shadow: var(--shadow-sm);
   font-size: 0.875rem;
   flex-shrink: 0;
 }
@@ -253,7 +255,7 @@
   gap: 0.5rem;
   color: var(--text-secondary);
   text-decoration: none;
-  transition: var(--transition-base);
+  transition: color 0.15s ease;
   padding: 0.25rem;
   border-radius: 0.375rem;
 }
@@ -266,11 +268,6 @@
   margin-left: auto;
   padding: 0.375rem;
   border-radius: 0.5rem;
-  transition: var(--transition-base);
-}
-
-.group-card .group-header .group-link:hover {
-  color: var(--accent);
 }
 
 .group-card .group-header .group-link svg {
@@ -278,60 +275,23 @@
   height: 1.25rem;
 }
 
-.group-card .group-details .group-link {
-  color: var(--text-secondary);
-  padding: 0.25rem;
-  border-radius: 0.375rem;
-}
-
-.group-card .group-details .group-link:hover {
-  color: var(--accent);
-}
-
 .group-card .group-details .group-link svg {
   width: 1rem;
   height: 1rem;
 }
 
-#groups_container.grid-cols-1 .group-card {
+/* ─── Grid view variants ────────────────────────────────────────────────────── */
+
+#groups_container[data-view="grid-1"] .group-card {
+  border-bottom: 1px solid var(--border-color);
+  background-color: transparent;
   border-radius: 0;
+  margin-bottom: 0;
+  padding: 0.75rem 0;
 }
 
-#groups_container.grid-cols-1 .group-card > div {
-  padding: 0.75rem;
-}
-
-#groups_container.grid-cols-1.md\:grid-cols-2 .group-card,
-#groups_container.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-3 .group-card {
-  border-radius: 0.5rem;
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-secondary);
-}
-
-#groups_container.grid-cols-1.md\:grid-cols-2 .group-card,
-#groups_container.grid-cols-1.sm\:grid-cols-2.lg\:grid-cols-3 .group-card {
-  min-height: 160px;
-}
-
-.group-card .p-4 {
-  padding: 1rem !important;
-}
-
-.group-card .flex.items-start.justify-between.gap-3.mb-3 {
-  margin-bottom: 0.75rem !important;
-}
-
-.group-card .flex.flex-wrap.items-center.gap-3.text-sm.text-gray-600.pt-2 {
-  padding-top: 0.5rem !important;
-  color: var(--text-secondary) !important;
-}
-
-#groups_container[data-view="grid-3"] .group-card .avatar-container {
-  display: none;
-}
-
-#groups_container[data-view="grid-3"] .group-card > div {
-  padding-left: 0.75rem;
+#groups_container[data-view="grid-1"] .group-card:last-child {
+  border-bottom: none;
 }
 
 #groups_container[data-view="grid-2"] .group-card,
@@ -349,36 +309,47 @@
   padding: 0;
 }
 
-#groups_container[data-view="grid-2"] .group-card:not(:last-child),
-#groups_container[data-view="grid-3"] .group-card:not(:last-child) {
-  border-bottom: 1px solid var(--border-color);
+#groups_container[data-view="grid-3"] .group-card .avatar-container {
+  display: none;
 }
 
-#groups_container[data-view="grid-1"] .group-card {
-  border-bottom: 1px solid var(--border-color);
-  background-color: transparent;
-  border-radius: 0;
-  margin-bottom: 0;
-  padding: 0.75rem 0;
+#groups_container[data-view="grid-3"] .group-card > div {
+  padding-left: 0.75rem;
 }
 
-#groups_container[data-view="grid-1"] .group-card:last-child {
-  border-bottom: none;
-}
+/* ─── Unicode highlighting ──────────────────────────────────────────────────── */
 
 .group-card[data-unicoded="true"] .group-name,
 .group-card[data-unicoded="true"] .group-abbr,
-.group-card[data-unicoded="true"] .group-name + div span,
 .group-name[data-unicoded="true"],
 .group-abbr[data-unicoded="true"],
 span[data-unicoded="true"] {
-  color: var(--accent) !important;
+  color: var(--accent);
 }
 
 .group-card[data-unicoded="true"] .group-abbr::before,
 .group-abbr[data-unicoded="true"]::before {
-  background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%2371717a' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z'%3E%3C/path%3E%3C/svg%3E") !important;
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%2371717a' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z'%3E%3C/path%3E%3C/svg%3E");
 }
+
+.unicode-badge {
+  background: rgba(167, 139, 163, 0.1);
+  border: 1px solid rgba(167, 139, 163, 0.25);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.26rem 0.5rem;
+  border-radius: 0.7rem;
+}
+
+.badge-container {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+/* ─── Unicode disclaimer (profile page) ────────────────────────────────────── */
 
 #unicode_disclaimer {
   background: var(--bg-secondary);
@@ -389,69 +360,14 @@ span[data-unicoded="true"] {
 #unicode_disclaimer a {
   color: #a1a1aa;
   text-decoration-color: rgba(161, 161, 170, 0.3);
-  transition: all 0.2s ease;
+  transition: color 0.15s ease;
 }
 
 #unicode_disclaimer a:hover {
   color: var(--accent);
-  text-decoration-color: rgba(178, 148, 187, 0.5);
 }
 
-@keyframes scrollReveal {
-  0% {
-    opacity: 0;
-    transform: translateZ(0) translateY(12px) scale(0.99);
-  }
-  40% {
-    opacity: 0.7;
-    transform: translateZ(0) translateY(6px) scale(0.995);
-  }
-  100% {
-    opacity: 1;
-    transform: translateZ(0) translateY(0) scale(1);
-  }
-}
-
-@keyframes fadeInStagger {
-  0% {
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
-.group-card:nth-child(1) { animation-delay: 0.01s; }
-.group-card:nth-child(2) { animation-delay: 0.02s; }
-.group-card:nth-child(3) { animation-delay: 0.035s; }
-.group-card:nth-child(4) { animation-delay: 0.05s; }
-.group-card:nth-child(5) { animation-delay: 0.065s; }
-.group-card:nth-child(6) { animation-delay: 0.08s; }
-.group-card:nth-child(7) { animation-delay: 0.095s; }
-.group-card:nth-child(8) { animation-delay: 0.11s; }
-.group-card:nth-child(9) { animation-delay: 0.125s; }
-.group-card:nth-child(10) { animation-delay: 0.14s; }
-.group-card:nth-child(11) { animation-delay: 0.155s; }
-.group-card:nth-child(12) { animation-delay: 0.17s; }
-
-.unicode-badge {
-  background: rgba(167, 139, 163, 0.1);
-  border: 1px solid rgba(167, 139, 163, 0.25);
-  color: var(--accent);
-  font-size: 0.75rem;
-  font-weight: 600;
-  padding: 0.26rem 0.5rem;
-  border-radius: .7rem;
-}
-
-.badge-container {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
+/* ─── Search format instructions ────────────────────────────────────────────── */
 
 .search-format-instructions {
   margin-top: 1.25rem;
@@ -460,7 +376,6 @@ span[data-unicoded="true"] {
   color: var(--text-muted);
 }
 
-.search-format-instructions-title,
 .search-format-instructions > p {
   margin: 0 0 0.5rem 0;
   font-weight: 400;
@@ -495,7 +410,7 @@ span[data-unicoded="true"] {
   font-family: ui-monospace, monospace;
   color: var(--text-muted);
   font-size: 0.75rem;
-  letter-spacing: .1rem;
+  letter-spacing: 0.1rem;
 }
 
 .search-format-instructions .format-example code {
@@ -511,6 +426,8 @@ span[data-unicoded="true"] {
   margin-left: auto;
 }
 
+/* ─── Match badges ──────────────────────────────────────────────────────────── */
+
 .match-badge {
   background: transparent;
   border: 2px solid var(--accent);
@@ -518,19 +435,17 @@ span[data-unicoded="true"] {
   font-size: 0.7rem;
   font-weight: 400;
   padding: 0.2rem 0.45rem;
-  border-radius: .7rem;
+  border-radius: 0.7rem;
   white-space: nowrap;
   margin-left: 0.5rem;
 }
 
 .match-badge.full {
-  background: transparent;
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .match-badge.db {
-  background: transparent;
   border-color: var(--text-muted);
   color: var(--text-secondary);
 }

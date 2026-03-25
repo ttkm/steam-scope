@@ -556,20 +556,13 @@ class GroupSearchManager {
 
             this.searchCache.set(cacheKey, data);
 
-            // Pre-fetch group images, but cap the wait at 4 s so a rate-limited
-            // or slow CDN response never stalls the entire results display.
+            // Optional image warm-up only never await (blocks UI + fights the scroll list).
             const imageUrls = (data.groups || []).map(g => g.avatar).filter(Boolean);
-            if (imageUrls.length > 0) {
-                const timeout = new Promise(resolve => setTimeout(resolve, 4000));
-                await Promise.race([
-                    Promise.allSettled(imageUrls.map(url => new Promise(resolve => {
-                        const img = new Image();
-                        img.onload = img.onerror = resolve;
-                        img.src = url;
-                    }))),
-                    timeout
-                ]);
-            }
+            const warm = imageUrls.slice(0, 24);
+            warm.forEach(url => {
+                const img = new Image();
+                img.src = url;
+            });
 
             this.displayResults(data);
             if (window.authManager && typeof window.authManager.refreshUser === 'function') window.authManager.refreshUser();
@@ -717,9 +710,11 @@ class GroupSearchManager {
     renderGroups() {
         const groupsContainer = document.getElementById('groups_container');
         if (!groupsContainer) return;
+        const frag = document.createDocumentFragment();
         this.searchData.forEach((group, index) => {
-            groupsContainer.appendChild(this.createGroupCard(group, index));
+            frag.appendChild(this.createGroupCard(group, index));
         });
+        groupsContainer.appendChild(frag);
     }
 
     createGroupCard(group, index) {
@@ -736,6 +731,7 @@ class GroupSearchManager {
         const showAvatar = this.currentView !== 'grid-3';
 
         const avatarUrl = group.avatar || `https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/steamworks_docs/english/Capsule_616x353.png`;
+        const escAttr = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
         const badges = [];
         // Show match badges (3x, 2x) first so they appear at the very top of the badge area
@@ -792,8 +788,8 @@ class GroupSearchManager {
         card.innerHTML = `
             <div class="flex ${isListView ? 'items-center' : 'flex-col'} gap-4">
                 ${showAvatar ? `
-                    <div class="avatar-container" onclick="window.utils.openImageModal('${avatarUrl}')">
-                        <img src="${avatarUrl}" alt="${group.name}">
+                    <div class="avatar-container" onclick='window.utils.openImageModal(${JSON.stringify(avatarUrl)})'>
+                        <img src="${escAttr(avatarUrl)}" alt="${escAttr(group.name)}" decoding="async">
                         <svg class="view-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -901,7 +897,7 @@ class GroupSearchManager {
 
         container.setAttribute('data-view', view);
         
-        container.className = 'grid gap-4';
+        container.className = 'grid gap-4 groups-search-scroll';
         if (view === 'grid-1') {
             container.classList.add('grid-cols-1');
         } else if (view === 'grid-2') {
