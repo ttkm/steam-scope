@@ -141,38 +141,36 @@ class GroupSearchManager {
         const sliderRange = document.getElementById('members_range');
 
         if (membersMin && membersMax && sliderRange) {
-            const mapMembersSliderPosition = (pos) => {
-                const clamped = Math.max(0, Math.min(40, pos));
-                if (clamped <= 30) {
-                    const t = clamped / 30;
-                    return Math.round(1 + t * 998); // 1..999 in ~30 steps
-                }
-                const idx = clamped - 30; // 1..10
-                return idx * 1000; // 1000..10000
+            const MEMBERS_SCALE = 100000;
+
+            const fmtMembers = (val) => {
+                if (val >= MEMBERS_SCALE) return '100k+';
+                if (val >= 1000) return (val / 1000).toFixed(0) + 'k';
+                return val.toString();
             };
 
             const updateMemberSliders = () => {
-                let minPos = parseInt(membersMin.value, 10);
-                let maxPos = parseInt(membersMax.value, 10);
+                let minVal = parseInt(membersMin.value, 10) || 0;
+                let maxVal = parseInt(membersMax.value, 10);
+                if (!Number.isFinite(maxVal)) maxVal = MEMBERS_SCALE;
 
-                if (minPos >= maxPos) {
+                // prevent thumbs from crossing
+                if (minVal > maxVal) {
                     if (membersMin === document.activeElement) {
-                        maxPos = Math.min(minPos + 1, 40);
-                        membersMax.value = maxPos;
+                        maxVal = Math.min(minVal + 1000, MEMBERS_SCALE);
+                        membersMax.value = maxVal;
                     } else {
-                        minPos = Math.max(maxPos - 1, 0);
-                        membersMin.value = minPos;
+                        minVal = Math.max(maxVal - 1000, 0);
+                        membersMin.value = minVal;
                     }
                 }
 
-                const minVal = mapMembersSliderPosition(minPos);
-                const maxVal = mapMembersSliderPosition(maxPos);
+                if (membersMinVal) membersMinVal.textContent = fmtMembers(minVal);
+                if (membersMaxVal) membersMaxVal.textContent = fmtMembers(maxVal);
 
-                if (membersMinVal) membersMinVal.textContent = this.formatNumber(minVal);
-                if (membersMaxVal) membersMaxVal.textContent = this.formatNumber(maxVal);
-
-                const p1 = (minPos / 40) * 100;
-                const p2 = (maxPos / 40) * 100;
+                // linear fill: 0–100k maps directly to 0–100%
+                const p1 = (minVal / MEMBERS_SCALE) * 100;
+                const p2 = (maxVal / MEMBERS_SCALE) * 100;
                 sliderRange.style.left = p1 + '%';
                 sliderRange.style.width = (p2 - p1) + '%';
             };
@@ -188,23 +186,25 @@ class GroupSearchManager {
         const yearRange = document.getElementById('year_range');
 
         if (yearMin && yearMax && yearRange) {
+            const YEAR_MIN = 2007;
+            const YEAR_MAX = 2015;
             const updateYearSliders = () => {
                 let minVal = parseInt(yearMin.value);
                 let maxVal = parseInt(yearMax.value);
                 
                 if (minVal >= maxVal) {
                     if (yearMin === document.activeElement) {
-                        maxVal = Math.min(minVal + 1, 2015);
+                        maxVal = Math.min(minVal + 1, YEAR_MAX);
                         yearMax.value = maxVal;
-                        if (maxVal === 2015 && minVal >= maxVal) {
-                            minVal = Math.max(maxVal - 1, 2007);
+                        if (maxVal === YEAR_MAX && minVal >= maxVal) {
+                            minVal = Math.max(maxVal - 1, YEAR_MIN);
                             yearMin.value = minVal;
                         }
                     } else {
-                        minVal = Math.max(maxVal - 1, 2007);
+                        minVal = Math.max(maxVal - 1, YEAR_MIN);
                         yearMin.value = minVal;
-                        if (minVal === 2007 && maxVal <= minVal) {
-                            maxVal = Math.min(minVal + 1, 2015);
+                        if (minVal === YEAR_MIN && maxVal <= minVal) {
+                            maxVal = Math.min(minVal + 1, YEAR_MAX);
                             yearMax.value = maxVal;
                         }
                     }
@@ -213,8 +213,9 @@ class GroupSearchManager {
                 yearMinVal.textContent = minVal;
                 yearMaxVal.textContent = maxVal;
                 
-                const percent1 = ((minVal - 2007) / (2015 - 2007)) * 100;
-                const percent2 = ((maxVal - 2007) / (2015 - 2007)) * 100;
+                const range = YEAR_MAX - YEAR_MIN;
+                const percent1 = ((minVal - YEAR_MIN) / range) * 100;
+                const percent2 = ((maxVal - YEAR_MIN) / range) * 100;
                 yearRange.style.left = percent1 + '%';
                 yearRange.style.width = (percent2 - percent1) + '%';
             };
@@ -236,6 +237,7 @@ class GroupSearchManager {
             button.addEventListener('click', () => {
                 searchTypeButtons.forEach(btn => btn.classList.remove('active'));
                 button.classList.add('active');
+                this.applyLiveFiltering();
             });
         });
 
@@ -370,17 +372,17 @@ class GroupSearchManager {
                 count++;
             }
 
-            const membersMin = document.getElementById('members_min');
-            const membersMax = document.getElementById('members_max');
-            if (membersMin && membersMax && (membersMin.value !== '0' || membersMax.value !== '40')) count++;
+        const membersMin = document.getElementById('members_min');
+        const membersMax = document.getElementById('members_max');
+        if (membersMin && membersMax && (membersMin.value !== '0' || membersMax.value !== '100000')) count++;
 
-            const yearMin = document.getElementById('year_min');
-            const yearMax = document.getElementById('year_max');
-            if (yearMin && yearMax) {
-                if (yearMin.value !== '2007' || yearMax.value !== '2015') {
-                    count++;
-                }
+        const yearMin = document.getElementById('year_min');
+        const yearMax = document.getElementById('year_max');
+        if (yearMin && yearMax) {
+            if (yearMin.value !== '2007' || yearMax.value !== '2015') {
+                count++;
             }
+        }
             
             if (count > 0 && filtersCount) {
                 filtersCount.textContent = count;
@@ -472,24 +474,14 @@ class GroupSearchManager {
         const activeSearchTypeBtn = document.querySelector('.search-type-btn.active');
         const selectedSearchType = activeSearchTypeBtn ? activeSearchTypeBtn.dataset.type : 'all';
 
-            const membersMinSlider = parseInt(document.getElementById('members_min')?.value, 10);
-            const membersMaxSlider = parseInt(document.getElementById('members_max')?.value, 10);
-
-            const mapMembersSliderPosition = (pos) => {
-                const clamped = Math.max(0, Math.min(40, pos));
-                if (clamped <= 30) {
-                    const t = clamped / 30;
-                    return Math.round(1 + t * 998);
-                }
-                const idx = clamped - 30;
-                return idx * 1000;
-            };
+            const membersMinRaw = parseInt(document.getElementById('members_min')?.value, 10);
+            const membersMaxRaw = parseInt(document.getElementById('members_max')?.value, 10);
 
             const criteria = {
                 ...parsedSearch,
                 searchType: selectedSearchType,
-                membersMin: mapMembersSliderPosition(Number.isFinite(membersMinSlider) ? membersMinSlider : 0),
-                membersMax: mapMembersSliderPosition(Number.isFinite(membersMaxSlider) ? membersMaxSlider : 40),
+                membersMin: Number.isFinite(membersMinRaw) ? membersMinRaw : 0,
+                membersMax: Number.isFinite(membersMaxRaw) ? membersMaxRaw : 100000,
                 yearMin: parseInt(document.getElementById('year_min')?.value) || 2007,
                 yearMax: parseInt(document.getElementById('year_max')?.value) || 2015,
                 exactMatch: document.getElementById('exact_match')?.checked || false,
@@ -563,6 +555,17 @@ class GroupSearchManager {
             }
 
             this.searchCache.set(cacheKey, data);
+
+            // Pre-fetch all group images so they're cached before cards render.
+            const imageUrls = (data.groups || []).map(g => g.avatar).filter(Boolean);
+            if (imageUrls.length > 0) {
+                await Promise.allSettled(imageUrls.map(url => new Promise(resolve => {
+                    const img = new Image();
+                    img.onload = img.onerror = resolve;
+                    img.src = url;
+                })));
+            }
+
             this.displayResults(data);
             if (window.authManager && typeof window.authManager.refreshUser === 'function') window.authManager.refreshUser();
 
@@ -791,7 +794,7 @@ class GroupSearchManager {
             <div class="flex ${isListView ? 'items-center' : 'flex-col'} gap-4">
                 ${showAvatar ? `
                     <div class="avatar-container" onclick="window.utils.openImageModal('${avatarUrl}')">
-                        <img src="${avatarUrl}" alt="${group.name}" loading="lazy">
+                        <img src="${avatarUrl}" alt="${group.name}">
                         <svg class="view-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -828,41 +831,59 @@ class GroupSearchManager {
         return card;
     }
 
-    // Live filter: unicode + member count range + founding year range (from current slider values)
+    // Live filter: all controls applied locally against originalSearchData — no new requests.
     applyLiveFiltering() {
         if (!this.originalSearchData.length) return;
 
         const unicodeFilter = document.getElementById('unicode_filter')?.value || 'all';
+        const exactMatch = document.getElementById('exact_match')?.checked || false;
 
-        const membersMinSlider = parseInt(document.getElementById('members_min')?.value, 10);
-        const membersMaxSlider = parseInt(document.getElementById('members_max')?.value, 10);
+        const activeSearchTypeBtn = document.querySelector('.search-type-btn.active');
+        const searchType = activeSearchTypeBtn ? activeSearchTypeBtn.dataset.type : 'all';
 
-        const mapMembersSliderPosition = (pos) => {
-            const clamped = Math.max(0, Math.min(40, pos));
-            if (clamped <= 30) {
-                const t = clamped / 30;
-                return Math.round(1 + t * 998);
-            }
-            const idx = clamped - 30;
-            return idx * 1000;
-        };
-
-        const membersMin = mapMembersSliderPosition(Number.isFinite(membersMinSlider) ? membersMinSlider : 0);
-        const membersMax = mapMembersSliderPosition(Number.isFinite(membersMaxSlider) ? membersMaxSlider : 40);
+        const membersMinRaw = parseInt(document.getElementById('members_min')?.value, 10);
+        const membersMaxRaw = parseInt(document.getElementById('members_max')?.value, 10);
+        const membersMin = Number.isFinite(membersMinRaw) ? membersMinRaw : 0;
+        // 100000 = "100k+" sentinel — treat as no upper bound
+        const membersMax = Number.isFinite(membersMaxRaw) ? membersMaxRaw : 100000;
         const yearMin = parseInt(document.getElementById('year_min')?.value, 10) || 2007;
         const yearMax = parseInt(document.getElementById('year_max')?.value, 10) || 2015;
 
+        const searchTerm = (this.searchCriteria?.searchTerm || '').toLowerCase().trim();
+
         let list = [...this.originalSearchData];
 
+        // --- text / exact-match / search-type filter ---
+        if (searchTerm) {
+            list = list.filter(g => {
+                const name = (g.name || '').toLowerCase();
+                const url  = (g.url  || '').toLowerCase();
+                const tag  = (g.tag  || '').toLowerCase();
+                const test = exactMatch
+                    ? (f) => f === searchTerm
+                    : (f) => f.includes(searchTerm);
+                if (searchType === 'name') return test(name);
+                if (searchType === 'url')  return test(url);
+                if (searchType === 'tag')  return test(tag);
+                return test(name) || test(url) || test(tag);
+            });
+        }
+
+        // --- unicode filter ---
         if (unicodeFilter === 'unicode') {
             list = list.filter(g => g.has_unicode);
         } else if (unicodeFilter === 'non-unicode') {
             list = list.filter(g => !g.has_unicode);
         }
 
+        // --- member count + founding year range ---
+        const noUpperBound = membersMax >= 100000;
         list = list.filter(g => {
             const members = g.member_count != null ? Number(g.member_count) : null;
-            if (members != null && (members < membersMin || members > membersMax)) return false;
+            if (members != null) {
+                if (members < membersMin) return false;
+                if (!noUpperBound && members > membersMax) return false;
+            }
             const year = g.founding_year != null ? Number(g.founding_year) : null;
             if (year != null && (year < yearMin || year > yearMax)) return false;
             return true;
