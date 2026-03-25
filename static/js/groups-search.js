@@ -556,14 +556,19 @@ class GroupSearchManager {
 
             this.searchCache.set(cacheKey, data);
 
-            // Pre-fetch all group images so they're cached before cards render.
+            // Pre-fetch group images, but cap the wait at 4 s so a rate-limited
+            // or slow CDN response never stalls the entire results display.
             const imageUrls = (data.groups || []).map(g => g.avatar).filter(Boolean);
             if (imageUrls.length > 0) {
-                await Promise.allSettled(imageUrls.map(url => new Promise(resolve => {
-                    const img = new Image();
-                    img.onload = img.onerror = resolve;
-                    img.src = url;
-                })));
+                const timeout = new Promise(resolve => setTimeout(resolve, 4000));
+                await Promise.race([
+                    Promise.allSettled(imageUrls.map(url => new Promise(resolve => {
+                        const img = new Image();
+                        img.onload = img.onerror = resolve;
+                        img.src = url;
+                    }))),
+                    timeout
+                ]);
             }
 
             this.displayResults(data);
@@ -712,15 +717,9 @@ class GroupSearchManager {
     renderGroups() {
         const groupsContainer = document.getElementById('groups_container');
         if (!groupsContainer) return;
-
         this.searchData.forEach((group, index) => {
-            const card = this.createGroupCard(group, index);
-            groupsContainer.appendChild(card);
+            groupsContainer.appendChild(this.createGroupCard(group, index));
         });
-
-        setTimeout(() => {
-            this.setupScrollAnimations();
-        }, 50);
     }
 
     createGroupCard(group, index) {
@@ -826,8 +825,6 @@ class GroupSearchManager {
             </div>
         `;
 
-        card.style.animationDelay = `${index * 20}ms`;
-        
         return card;
     }
 
@@ -929,29 +926,6 @@ class GroupSearchManager {
         }
     }
 
-    setupScrollAnimations() {
-        const cards = document.querySelectorAll('.group-card');
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
-                    observer.unobserve(entry.target);
-                }
-            });
-        }, {
-            threshold: 0.1,
-            rootMargin: '50px'
-        });
-
-        cards.forEach((card, index) => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(12px)';
-            const delay = index * 0.02; // faster stagger
-            card.style.transition = `opacity 0.25s ease ${delay}s, transform 0.25s ease ${delay}s`;
-            observer.observe(card);
-        });
-    }
 
     showLoading(message = 'searching...') {
         const loadingElement = document.getElementById('loading');
@@ -1022,88 +996,20 @@ class GroupSearchManager {
     updateResultsDisplay() {
         const resultsCount = document.getElementById('results_count');
         const groupsContainer = document.getElementById('groups_container');
-        
         if (!resultsCount || !groupsContainer) return;
 
         const count = this.searchData.length;
-        let countText = `${count} group${count !== 1 ? 's' : ''} found`;
-        resultsCount.textContent = countText;
+        resultsCount.textContent = `${count} group${count !== 1 ? 's' : ''} found`;
 
-        this.smoothFilterTransition(groupsContainer);
-    }
-
-    smoothFilterTransition(groupsContainer) {
-        const currentCards = Array.from(groupsContainer.querySelectorAll('.group-card'));
-        
-        const isFiltering = currentCards.length > 0 && this.originalSearchData.length > 0;
-        
-        if (!isFiltering) {
-            groupsContainer.innerHTML = '';
-            this.renderGroups();
-            setTimeout(() => this.setupScrollAnimations(), 50);
+        groupsContainer.innerHTML = '';
+        if (count === 0) {
+            groupsContainer.innerHTML = `
+                <div class="col-span-full text-center py-12">
+                    <p class="text-gray-500">no groups match the current filters</p>
+                </div>`;
             return;
         }
-
-        const currentScrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        
-        const originalScrollBehavior = document.documentElement.style.scrollBehavior;
-        document.documentElement.style.scrollBehavior = 'auto';
-
-        const currentHeight = groupsContainer.offsetHeight;
-        groupsContainer.style.minHeight = currentHeight + 'px';
-        groupsContainer.classList.add('groups-container-transitioning');
-
-        const visibleGroupIds = new Set(this.searchData.map(group => group.gid));
-        
-        const cardsToRemove = currentCards.filter(card => {
-            const groupId = card.dataset.groupId;
-            return !visibleGroupIds.has(groupId);
-        });
-
-        if (cardsToRemove.length === 0) {
-            groupsContainer.innerHTML = '';
-            this.renderGroups();
-            
-            const newHeight = groupsContainer.scrollHeight;
-            groupsContainer.style.minHeight = newHeight + 'px';
-            
-            window.scrollTo(0, currentScrollTop);
-            
-            setTimeout(() => {
-                this.setupScrollAnimations();
-                setTimeout(() => {
-                    groupsContainer.style.minHeight = '';
-                    groupsContainer.classList.remove('groups-container-transitioning');
-                    document.documentElement.style.scrollBehavior = originalScrollBehavior;
-                }, 300);
-            }, 50);
-            return;
-        }
-
-        cardsToRemove.forEach(card => {
-            card.classList.add('filtering-out');
-        });
-
-        setTimeout(() => {
-            groupsContainer.innerHTML = '';
-            this.renderGroups();
-            
-            const newHeight = groupsContainer.scrollHeight;
-            groupsContainer.style.minHeight = newHeight + 'px';
-            
-            window.scrollTo(0, currentScrollTop);
-            
-            setTimeout(() => {
-                this.setupScrollAnimations();
-                
-                setTimeout(() => {
-                    groupsContainer.style.minHeight = '';
-                    groupsContainer.classList.remove('groups-container-transitioning');
-                    document.documentElement.style.scrollBehavior = originalScrollBehavior;
-                }, 300);
-            }, 50);
-            
-        }, 200); 
+        this.renderGroups();
     }
 }
 

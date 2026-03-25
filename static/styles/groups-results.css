@@ -1,40 +1,18 @@
 /*
  * groups results
- * results animation
- * container transition
- * filtering-out state
  */
 
 #results {
-  animation: fadeInUp 0.5s ease-out;
+  animation: fadeInUp 0.3s ease-out;
 }
 
 @keyframes fadeInUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-#groups_container {
-  transition: min-height 0.3s ease-out;
-}
-
-.group-card {
-  transition: opacity 0.2s ease-out, transform 0.2s ease-out, margin 0.2s ease-out;
-}
-
-.group-card.filtering-out {
-  opacity: 0;
-  transform: scale(0.95);
-  margin-bottom: 0;
-  pointer-events: none;
-}
-
-.groups-container-transitioning {
-  overflow: hidden;
 }
